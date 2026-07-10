@@ -76,6 +76,7 @@ function inferType(relPath, frontmatter) {
 // build a name -> id index for wikilink resolution
 async function buildNameIndex(srcRoot) {
   const index = new Map(); // lowercase basename -> [ids...]
+  const byPath = new Map(); // lowercase full relative path -> id
   const walk = async (dir) => {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const e of entries) {
@@ -87,19 +88,46 @@ async function buildNameIndex(srcRoot) {
         const base = path.basename(rel).toLowerCase();
         if (!index.has(base)) index.set(base, []);
         index.get(base).push(rel);
+        byPath.set(rel.toLowerCase(), rel);
       }
     }
   };
   await walk(srcRoot);
+  index._byPath = byPath; // attach path map for the resolver
   return index;
 }
 
 function resolveWikilink(name, nameIndex) {
   // strip heading/block refs and aliases
-  const target = name.split("|")[0].split("#")[0].split("^")[0].trim();
+  let target = name.split("|")[0].split("#")[0].split("^")[0].trim();
+  // links to non-markdown attachments (pdf, images, docs) can't be concepts
+  if (/\.(pdf|png|jpe?g|gif|svg|docx?|pptx?|xlsx?|csv|html?|zip|mp4|mov|sql|py)$/i.test(target)) {
+    return { id: null, target, attachment: true };
+  }
+  // a link written as [[note.md]] should match the note indexed without .md
+  target = target.replace(/\.md$/i, "");
   const key = target.toLowerCase();
-  const matches = nameIndex.get(key);
+
+  // 1. path-style link (contains a slash): try exact full-path match first
+  if (key.includes("/")) {
+    const byPath = nameIndex._byPath;
+    const exact = byPath && byPath.get(key);
+    if (exact) return { id: exact, target };
+    // fall through to basename of the path, e.g. [[agent-brain/CLAUDE]] -> CLAUDE
+  }
+
+  // 2. basename match (handles simple [[note]] and path links whose leaf is unique)
+  const base = key.includes("/") ? key.split("/").pop() : key;
+  const matches = nameIndex.get(base);
   if (!matches || matches.length === 0) return { id: null, target };
+
+  // if the link had a folder hint, prefer a match whose path contains that hint
+  if (key.includes("/")) {
+    const hintDir = key.slice(0, key.lastIndexOf("/"));
+    const preferred = matches.find((m) => m.toLowerCase().includes(hintDir));
+    if (preferred) return { id: preferred, target, ambiguous: matches.length > 1 };
+  }
+
   const id = matches.slice().sort((a, b) => a.length - b.length)[0];
   return { id, target, ambiguous: matches.length > 1 };
 }
@@ -148,10 +176,11 @@ export async function importObsidian(srcRoot, destRoot, { embedder = null } = {}
     body = body.replace(WIKILINK, (_full, inner) => {
       const aliasSplit = inner.split("|");
       const display = (aliasSplit[1] ?? aliasSplit[0].split("#")[0]).trim();
-      const { id: targetId, target, ambiguous } = resolveWikilink(inner, nameIndex);
+      const { id: targetId, target, ambiguous, attachment } = resolveWikilink(inner, nameIndex);
       report.links++;
       if (!targetId) {
-        report.unresolved.push({ from: id, target });
+        if (attachment) (report.attachments ??= []).push({ from: id, target });
+        else report.unresolved.push({ from: id, target });
         return display; // drop the link, keep the text
       }
       if (ambiguous) report.ambiguous.push({ from: id, target });

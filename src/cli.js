@@ -61,20 +61,33 @@ const VIZ_TEMPLATE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OC5 — Open Context Vault</title>
 <style>
-  :root { --ink:#11201a; --paper:#f6f4ee; --line:#c9c4b6; --accent:#1f6f54; }
+  :root {
+    --peach:#f7b593; --peri:#9c99e1; --plum:#6961a3;
+    --paper:#faf6f2; --ink:#4a4368; --line:#d9cfc6;
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:ui-monospace,"SF Mono",Menlo,monospace; background:var(--paper); color:var(--ink); }
-  header { padding:18px 22px; border-bottom:1px solid var(--line); }
-  header b { font-weight:650; letter-spacing:.02em; }
-  header span { color:#6b6657; }
-  svg { width:100vw; height:calc(100vh - 60px); display:block; }
-  .edge { stroke:var(--line); stroke-width:1; }
-  .node circle { fill:#fff; stroke:var(--accent); stroke-width:1.5; }
-  .node text { font-size:11px; fill:var(--ink); }
-  .node:hover circle { fill:var(--accent); }
+  body { margin:0; font-family:ui-rounded,"SF Pro Rounded",-apple-system,Arial,sans-serif; background:var(--paper); color:var(--ink); }
+  header { display:flex; align-items:center; gap:14px; padding:14px 20px; background:var(--peri); border-bottom:3px solid var(--plum); }
+  header .mark { width:34px; height:42px; flex:0 0 auto; }
+  header b { font-weight:800; letter-spacing:.06em; color:var(--plum); font-size:19px; }
+  header span { color:var(--plum); opacity:.8; font-size:13px; margin-left:2px; }
+  svg#c { width:100vw; height:calc(100vh - 74px); display:block; }
+  .edge { stroke:var(--peri); stroke-width:1.5; opacity:.55; }
+  .node circle { fill:#fff; stroke:var(--plum); stroke-width:2; }
+  .node text { font-size:12px; font-weight:600; fill:var(--ink); }
+  .node:hover circle { fill:var(--peach); stroke:var(--plum); }
 </style></head>
 <body>
-<header><b>OC5</b> &nbsp;<span>knowledge graph — drag nodes, hover to read</span></header>
+<header>
+  <svg class="mark" viewBox="0 0 260 320" xmlns="http://www.w3.org/2000/svg">
+    <rect x="10" y="10" width="240" height="300" rx="26" fill="#f7b593" stroke="#6961a3" stroke-width="10"/>
+    <circle cx="130" cy="130" r="40" fill="none" stroke="#6961a3" stroke-width="11"/>
+    <circle cx="130" cy="130" r="22" fill="none" stroke="#6961a3" stroke-width="11"/>
+    <line x1="170" y1="130" x2="210" y2="130" stroke="#6961a3" stroke-width="11" stroke-linecap="round"/>
+    <text x="130" y="250" text-anchor="middle" font-family="Arial" font-weight="800" font-size="80" fill="#6961a3">OC5</text>
+  </svg>
+  <b>Open Context Vault</b><span>knowledge graph — drag nodes, hover to read</span>
+</header>
 <svg id="c"></svg>
 <script>
 const G = __GRAPH__;
@@ -102,8 +115,8 @@ function render(){
   for(const e of edges){ const a=pos[e.from], b=pos[e.to];
     s+=\`<line class="edge" x1="\${a.x}" y1="\${a.y}" x2="\${b.x}" y2="\${b.y}"/>\`; }
   for(const n of nodes){
-    s+=\`<g class="node" data-id="\${n.id}"><circle cx="\${n.x}" cy="\${n.y}" r="7"/>\`+
-       \`<text x="\${n.x+11}" y="\${n.y+4}">\${n.title}</text>\`+
+    s+=\`<g class="node" data-id="\${n.id}"><circle cx="\${n.x}" cy="\${n.y}" r="8"/>\`+
+       \`<text x="\${n.x+13}" y="\${n.y+4}">\${n.title}</text>\`+
        \`<title>\${n.id} — \${n.type||""}</title></g>\`;
   }
   svg.innerHTML=s;
@@ -118,19 +131,71 @@ window.addEventListener("mouseup",()=>drag=null);
 setInterval(step,33);
 </script></body></html>`;
 
-const run = { seed, viz, import: importCmd, check: checkCmd, watch: watchCmd, join: joinCmd, sync: syncCmd, "git-sync": gitSyncCmd, "live-sync": liveSyncCmd };
+const run = { seed, viz, import: importCmd, check: checkCmd, watch: watchCmd, join: joinCmd, sync: syncCmd, "git-sync": gitSyncCmd, "live-sync": liveSyncCmd, export: exportCmd };
 if (!run[cmd]) {
-  console.error("usage: oc5 <seed|viz|import|check|watch|join|sync|live-sync|git-sync> [args]");
+  console.error("usage: oc5 <seed|viz|import|check|watch|join|sync|live-sync|git-sync|export> [args]");
   console.error("  oc5 import <obsidianDir> <destVault>   convert an Obsidian vault to OC5/OKF");
   console.error("  oc5 check  <obsidianDir>               dry-run an import (source untouched)");
   console.error("  oc5 watch  <vaultDir>                  print live on-disk changes");
   console.error("  oc5 join   <vaultDir> <peerUrl> <token>  join a peer vault and reconcile");
   console.error("  oc5 sync   <vaultDir>                  reconcile once against saved peers");
   console.error("  oc5 live-sync <vaultDir>               real-time sync with saved peers");
+  console.error("  oc5 export <vaultDir> [--write]        emit Claude Code / MCP client config");
   console.error("  oc5 git-sync <vaultDir> [remoteUrl]    fallback: sync via git");
   process.exit(1);
 }
 await run[cmd]();
+
+// emit MCP client config for this vault, ready for Claude Code (and any mcpServers client).
+async function exportCmd() {
+  const dir = process.argv[3] ?? "./vault";
+  const write = process.argv.includes("--write");
+  const os = await import("node:os");
+
+  const nodeBin = process.execPath;                 // absolute path to THIS node
+  const serverJs = path.resolve(new URL("./mcp/server.js", import.meta.url).pathname);
+  const vaultAbs = path.resolve(dir);
+  const name = "open-context-vault";
+
+  // env block only if embeddings are configured in the current environment
+  const env = {};
+  if (process.env.OCV_EMBED_URL) {
+    env.OCV_EMBED_URL = process.env.OCV_EMBED_URL;
+    env.OCV_EMBED_MODEL = process.env.OCV_EMBED_MODEL ?? "baai/bge-m3";
+    if (process.env.OCV_EMBED_KEY) env.OCV_EMBED_KEY = process.env.OCV_EMBED_KEY;
+  }
+
+  const serverEntry = { command: nodeBin, args: [serverJs, vaultAbs] };
+  if (Object.keys(env).length) serverEntry.env = env;
+  const mcpJson = { mcpServers: { [name]: serverEntry } };
+
+  // 1) one-line claude mcp add (stdio). env vars passed with -e FLAG=VALUE before the name.
+  const envFlags = Object.entries(env).map(([k, v]) => `-e ${k}=${v}`).join(" ");
+  const addCmd =
+    `claude mcp add --transport stdio ${envFlags ? envFlags + " " : ""}${name} -- ` +
+    `"${nodeBin}" "${serverJs}" "${vaultAbs}"`;
+
+  console.log("=== Option 1: one-line command (fastest) ===");
+  console.log(addCmd);
+  console.log("\n=== Option 2: project-scoped .mcp.json (commits with a repo) ===");
+  console.log(JSON.stringify(mcpJson, null, 2));
+  console.log("\n=== Option 3: raw mcpServers block (paste into ~/.claude.json or any MCP client) ===");
+  console.log(JSON.stringify({ [name]: serverEntry }, null, 2));
+
+  if (write) {
+    const out = path.join(vaultAbs, ".mcp.json");
+    await fs.writeFile(out, JSON.stringify(mcpJson, null, 2) + "\n", "utf8");
+    console.log(`\nWrote ${out}`);
+    console.log("From a project using this vault, Claude Code will offer to enable it on next start.");
+    if (env.OCV_EMBED_KEY) {
+      console.log("\n⚠  This file contains your embed API key. If you commit the vault to git,");
+      console.log("   add `.mcp.json` to .gitignore, or export without OCV_EMBED_KEY set and");
+      console.log("   let each machine supply the key via its own environment.");
+    }
+  } else {
+    console.log("\nRe-run with --write to save Option 2 as <vault>/.mcp.json");
+  }
+}
 
 async function liveSyncCmd() {
   const { LiveSync } = await import("./core/live-sync.js");
@@ -177,6 +242,7 @@ async function checkCmd() {
     console.log(`  ${r.imported} notes would import, ${r.links} wikilinks found`);
     console.log(`  types: ${Object.entries(types).map(([t, n]) => `${t}:${n}`).join("  ")}`);
     console.log(`  unresolved wikilinks: ${r.unresolved.length}`);
+    if (r.attachments?.length) console.log(`  attachment links (pdf/docx/etc, expected): ${r.attachments.length}`);
     if (r.unresolved.length) {
       const sample = r.unresolved.slice(0, 8).map((u) => `${u.target}`).join(", ");
       console.log(`    e.g. ${sample}${r.unresolved.length > 8 ? " ..." : ""}`);
