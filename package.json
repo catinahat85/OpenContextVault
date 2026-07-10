@@ -1,0 +1,25 @@
+{
+  "name": "open-context-vault",
+  "version": "0.1.0",
+  "description": "Open Context Vault (OCV) — an open-source, OKF-native knowledge vault. Plain markdown + YAML on disk, served over a REST API and an MCP server, with hybrid search. No lock-in, Apache-2.0.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": { "oc5": "./src/cli.js" },
+  "scripts": {
+    "rest": "node src/rest/server.js",
+    "mcp": "node src/mcp/server.js",
+    "seed": "node src/cli.js seed",
+    "viz": "node src/cli.js viz",
+    "check": "node src/cli.js check",
+    "watch": "node src/cli.js watch",
+    "selftest": "node test/selftest.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^4.19.2",
+    "gray-matter": "^4.0.3",
+    "zod": "^3.23.8"
+  },
+  "engines": { "node": ">=20" }
+}
