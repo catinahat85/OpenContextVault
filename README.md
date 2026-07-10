@@ -6,6 +6,8 @@
 
 An open-source, OKF-native knowledge vault. Plain markdown and YAML on disk, served over a REST API and an MCP server, with hybrid search. No app lock-in, no proprietary database, Apache-2.0.
 
+> OC5 is a proof of concept for [Open Knowledge Format (OKF)](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/), the open file format for agent-readable knowledge introduced by Google Cloud. See the [OKF spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) for the format this vault implements.
+
 This is the open, standardized version of the thing Obsidian proved people want and Logseq is drifting away from. A vault is just a folder of markdown files. Agents read and write it through MCP. Humans read and write it in any editor. The file format is the contract, and the contract is [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf).
 
 ## Why it exists
