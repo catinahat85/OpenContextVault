@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/oc5-logo.svg" alt="OC5 — Open Context Vault logo" width="200">
+</p>
+
 # Open Context Vault (OC5)
 
 An open-source, OKF-native knowledge vault. Plain markdown and YAML on disk, served over a REST API and an MCP server, with hybrid search. No app lock-in, no proprietary database, Apache-2.0.
