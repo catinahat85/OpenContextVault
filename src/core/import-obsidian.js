@@ -21,6 +21,41 @@ import { Vault } from "./vault.js";
 const WIKILINK = /\[\[([^\]]+)\]\]/g;
 const INLINE_TAG = /(^|\s)#([A-Za-z0-9_/-]+)/g;
 
+// Obsidian allows frontmatter values that aren't valid YAML — most commonly
+// [[wikilinks]] inside a field (backlinks: [[a]], [[b]]). Strict YAML rejects
+// these. safeMatter tries normal parsing first, and on failure sanitizes the
+// frontmatter (quoting wikilink-bearing values) and retries, so no note is lost.
+function safeMatter(raw) {
+  try {
+    return matter(raw);
+  } catch {
+    // isolate frontmatter block
+    const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+    if (!m) return { data: {}, content: raw };
+    const [, fm, content] = m;
+    const cleaned = fm
+      .split("\n")
+      .map((line) => {
+        const kv = line.match(/^(\s*[\w.-]+:\s*)(.*)$/);
+        if (!kv) return line;
+        const [, key, val] = kv;
+        // if the value contains wikilinks or unbalanced brackets, store it as a quoted string
+        if (/\[\[|\]\]/.test(val)) {
+          const safe = val.replace(/"/g, "'");
+          return `${key}"${safe}"`;
+        }
+        return line;
+      })
+      .join("\n");
+    try {
+      return matter(`---\n${cleaned}\n---\n${content}`);
+    } catch {
+      // last resort: skip frontmatter entirely, keep the note body
+      return { data: {}, content };
+    }
+  }
+}
+
 // map a folder name or frontmatter hint to an OCV Profile type
 function inferType(relPath, frontmatter) {
   if (frontmatter.type) return frontmatter.type;
@@ -101,7 +136,7 @@ export async function importObsidian(srcRoot, destRoot, { embedder = null } = {}
     const rel = path.relative(srcRoot, file).replace(/\\/g, "/").replace(/\.md$/i, "");
     const id = toConceptId(rel);
     const raw = await fs.readFile(file, "utf8");
-    const parsed = matter(raw);
+    const parsed = safeMatter(raw);
     let body = parsed.content;
 
     // collect inline #tags, then strip them from prose
